@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers.models.qwen3_moe.configuration_qwen3_moe import Qwen3MoeConfig
+
+from nanomoe.config import MoeConfig
 
 
 class Router(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config: MoeConfig):
         super().__init__()
         self.config = config
 
@@ -27,7 +28,7 @@ class Router(nn.Module):
 
 
 class Experts(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config: MoeConfig):
         super().__init__()
         self.config = config
         self.gate_proj = nn.Parameter(
@@ -71,8 +72,8 @@ class Experts(nn.Module):
         return torch.concat(output, 0)
 
 
-class MOE(nn.Module):
-    def __init__(self, config: Qwen3MoeConfig):
+class Moe(nn.Module):
+    def __init__(self, config: MoeConfig):
         super().__init__()
         self.config = config
         self.router = Router(config)
@@ -103,4 +104,4 @@ class MOE(nn.Module):
             expert_token_idxs.unsqueeze(-1).expand(-1, self.config.hidden_size),
             ffn_tokens,
         )
-        return output
+        return output.view(bsz, seq, -1)

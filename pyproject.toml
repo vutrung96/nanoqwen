@@ -1,5 +1,5 @@
 [project]
-name = "nanoqwen"
+name = "nanomoe"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -30,4 +30,4 @@ explicit = true
 transformer-engine = ["pybind11"]
 
 [tool.setuptools.packages.find]
-include = ["nanoqwen*"]
+include = ["nanomoe*"]

@@ -1,35 +1,39 @@
 """
-Shared fixtures for Qwen3 MoE testing harness.
+Shared fixtures for nanomoe testing harness.
 """
 
 import pytest
 import torch
-from transformers.models.qwen3_moe.configuration_qwen3_moe import Qwen3MoeConfig
+
+from nanomoe.config import MoeConfig
+from tests.config_utils import moe_config_to_qwen3
 
 
 @pytest.fixture
-def test_config():
-    """Minimal config for fast testing."""
-    config = Qwen3MoeConfig(
+def moe_config():
+    """Generic MoeConfig for testing."""
+    return MoeConfig(
         hidden_size=256,
-        intermediate_size=512,
-        num_hidden_layers=2,
         num_attention_heads=8,
         num_key_value_heads=4,  # GQA: 8/4 = 2 heads per KV group
         max_position_embeddings=128,
         num_experts=4,
         num_experts_per_tok=2,
         moe_intermediate_size=128,
-        shared_expert_intermediate_size=256,
-        vocab_size=1000,
-        hidden_act="silu",
-        rms_norm_eps=1e-6,
         rope_theta=10000.0,
-        attention_bias=False,  # Qwen3 has no attention bias by default
+        rms_norm_eps=1e-6,
         norm_topk_prob=True,
     )
-    config._attn_implementation = "eager"
-    return config
+
+
+@pytest.fixture
+def test_config(moe_config):
+    """HuggingFace Qwen3MoeConfig for comparison tests.
+
+    This fixture provides backwards compatibility - tests that need
+    HuggingFace models should use this fixture.
+    """
+    return moe_config_to_qwen3(moe_config)
 
 
 @pytest.fixture
@@ -43,10 +47,10 @@ def seq_len():
 
 
 @pytest.fixture
-def random_hidden_states(test_config, batch_size, seq_len):
+def random_hidden_states(moe_config, batch_size, seq_len):
     """Random input tensor of shape (batch, seq, hidden_size)."""
     torch.manual_seed(42)
-    return torch.randn(batch_size, seq_len, test_config.hidden_size)
+    return torch.randn(batch_size, seq_len, moe_config.hidden_size)
 
 
 @pytest.fixture

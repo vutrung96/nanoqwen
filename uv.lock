@@ -1297,7 +1297,7 @@ wheels = [
 ]
 
 [[package]]
-name = "nanoqwen"
+name = "nanomoe"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -10,7 +10,7 @@ from transformers.models.qwen3_moe.modeling_qwen3_moe import (
     Qwen3MoeRotaryEmbedding,
 )
 
-from nanoqwen.layers import Rope, apply_rope
+from nanomoe.layers import Rope, apply_rope
 from tests.utils import ATOL, RTOL
 
 
