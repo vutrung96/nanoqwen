@@ -21,7 +21,8 @@ class Router(nn.Module):
         routing_map = (
             torch.zeros_like(routing_probs).scatter_(-1, top_k_indices, True).bool()
         )
-        routing_probs = routing_probs / top_k_probs.sum(-1, keepdim=True)
+        if self.config.norm_topk_prob:
+            routing_probs = routing_probs / top_k_probs.sum(-1, keepdim=True)
         return routing_probs, routing_map
 
 
@@ -63,8 +64,8 @@ class Experts(nn.Module):
 
             chunk = expert_tokens[chunk_start:chunk_end]
             output_chunk = (
-                F.silu(chunk @ self.gate_proj[i, ...]) * (chunk @ self.up_proj[i, ...])
-            ) @ self.down_proj[i, ...]
+                F.silu(chunk @ self.gate_proj[i]) * (chunk @ self.up_proj[i])
+            ) @ self.down_proj[i]
             output.append(output_chunk)
 
         return torch.concat(output, 0)
@@ -93,17 +94,11 @@ class MOE(nn.Module):
         expert_tokens_count = flat_routing_map.sum(dim=1).cumsum(0)
 
         ffn_tokens = self.experts(expert_tokens, expert_tokens_count)
-        print(
-            "ffn_tokens ",
-            ffn_tokens.shape,
-            " flat_routing_probs ",
-            flat_routing_probs.shape,
-        )
-        ffn_tokens = ffn_tokens * expert_token_probs.unsqueeze(-1).expand(
-            -1, self.config.hidden_size
-        )
+        ffn_tokens = ffn_tokens * expert_token_probs.unsqueeze(-1)
 
-        output = torch.zeros(bsz * seq, self.config.hidden_size).scatter_add_(
+        output = torch.zeros(
+            bsz * seq, self.config.hidden_size, device=x.device
+        ).scatter_add_(
             0,
             expert_token_idxs.unsqueeze(-1).expand(-1, self.config.hidden_size),
             ffn_tokens,
