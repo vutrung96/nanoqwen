@@ -22,7 +22,7 @@ def test_config():
         moe_intermediate_size=128,
         shared_expert_intermediate_size=256,
         vocab_size=1000,
-        hidden_act="si lu",
+        hidden_act="silu",
         rms_norm_eps=1e-6,
         rope_theta=10000.0,
         attention_bias=False,  # Qwen3 has no attention bias by default

@@ -76,3 +76,105 @@ def make_causal_mask(seq_len, batch_size):
     mask = mask.float().masked_fill(mask, float("-inf"))
     return mask.unsqueeze(0).unsqueeze(0).expand(batch_size, 1, -1, -1)
 ```
+
+## MoE (Mixture of Experts)
+
+### 7. Slice syntax: comma vs colon indexing
+
+**Date**: 2026-01-13
+**Component**: Experts
+**Severity**: High
+
+**Bug:** Used comma instead of colon for tensor slicing.
+```python
+# Wrong - this is multi-indexing, returns a scalar
+chunk = expert_tokens[chunk_start, chunk_end]
+
+# Correct - this is slicing, returns a 2D tensor
+chunk = expert_tokens[chunk_start:chunk_end]
+```
+**Why:** `tensor[a, b]` indexes two dimensions (returns 0D scalar or broadcasts). `tensor[a:b]` slices along dim 0 (returns chunk of rows).
+
+**Test that catches it:** `RuntimeError: both arguments to matmul need to be at least 1D, but they are 0D and 2D`
+
+---
+
+### 8. SwiGLU: gate and up projections swapped
+
+**Date**: 2026-01-13
+**Component**: Experts
+**Severity**: High
+
+**Bug:** Applied silu to up_proj instead of gate_proj.
+```python
+# Wrong - silu on up, multiply by gate
+F.silu(chunk @ self.up_proj[i]) * (chunk @ self.gate_proj[i])
+
+# Correct - silu on gate, multiply by up
+F.silu(chunk @ self.gate_proj[i]) * (chunk @ self.up_proj[i])
+```
+**Why:** SwiGLU = `silu(gate(x)) * up(x)`. The gate controls flow, up provides values. Swapping them gives wrong numerical results.
+
+**Test that catches it:** `test_single_expert_vs_hf` - numerical mismatch against HF reference.
+
+---
+
+### 9. Concat dimension for token batches
+
+**Date**: 2026-01-13
+**Component**: Experts
+**Severity**: High
+
+**Bug:** Concatenated expert outputs along feature dimension instead of token dimension.
+```python
+# Wrong - concatenates along hidden_size (creates huge tensor)
+torch.concat(output, dim=-1)
+
+# Correct - concatenates along token dimension
+torch.concat(output, dim=0)
+```
+**Why:** Each expert processes a chunk of tokens with shape `(num_tokens, hidden_size)`. We want to stack tokens vertically, not widen the hidden dimension.
+
+**Test that catches it:** `RuntimeError: Sizes of tensors must match except in dimension 1`
+
+---
+
+### 10. Expert token counts: wrong sum dimension
+
+**Date**: 2026-01-13
+**Component**: MOE
+**Severity**: High
+
+**Bug:** Summed routing map along wrong dimension.
+```python
+# flat_routing_map shape: (num_experts, batch*seq)
+
+# Wrong - sums per position, shape (batch*seq,)
+expert_tokens_count = flat_routing_map.sum(dim=0)
+
+# Correct - sums per expert, shape (num_experts,)
+expert_tokens_count = flat_routing_map.sum(dim=1)
+```
+**Why:** We need count of tokens per expert for chunking. `sum(dim=1)` collapses the token dimension, giving per-expert counts.
+
+**Additional issue:** Counts need to be **cumulative** if using as chunk boundaries.
+
+---
+
+### 11. Router normalization: all probs vs top-k only
+
+**Date**: 2026-01-13
+**Component**: Router
+**Severity**: Medium
+
+**Bug:** Normalized all routing probabilities instead of just the selected top-k.
+```python
+# Wrong - normalizes all probs (redundant after softmax)
+routing_probs = routing_probs / routing_probs.sum(-1, keepdim=True)
+
+# Correct - only normalize the top-k weights
+# (done during expert output combination, not in router)
+```
+**Why:** HuggingFace normalizes only the top-k weights so they sum to 1. Normalizing all probs is redundant (softmax already sums to 1) and doesn't match HF behavior.
+
+**Test that catches it:** `test_router_weights_vs_hf` - top-k weight mismatch.
